@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 仮想環境
+venv/
+env/
+ENV/
+
+# IDEの設定
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# テストファイル
+test_*.pdf
+test_*.pptx
+test_images/
+kept_images/
+
+# 出力ファイル
+*.pptx
+images/
+output/
+
+# OS
+.DS_Store
+Thumbs.db
