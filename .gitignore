@@ -20,25 +20,25 @@ wheels/
 .installed.cfg
 *.egg
 
-# 仮想環境
+# Virtual environments
 venv/
 env/
 ENV/
 
-# IDEの設定
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# テストファイル
+# Test files
 test_*.pdf
 test_*.pptx
 test_images/
 kept_images/
 
-# 出力ファイル
+# Output
 *.pptx
 images/
 output/
