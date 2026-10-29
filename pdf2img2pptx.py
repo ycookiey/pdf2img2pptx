@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 PDF to Image to PPTX Converter
-PDFを画像化し、画像群をスライドサイズいっぱいに配置したPPTXファイルを自動生成するツール
+
+Renders PDF pages to PNG images and builds a 16:9 PPTX with one full-slide
+image per page.
 """
 
 import argparse
@@ -32,30 +34,23 @@ except ImportError:
     sys.exit(1)
 
 
-# サポートされる画像形式
 SUPPORTED_IMAGE_FORMATS = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')
 
 
 def pdf_to_images(pdf_path: str, output_dir: str, dpi: int = 600) -> List[str]:
     """
-    PDFファイルを画像に変換
-
-    Args:
-        pdf_path: 入力PDFファイルパス
-        output_dir: 出力ディレクトリ
-        dpi: 解像度（デフォルト: 600）
+    Render each page of a PDF to a PNG file named page_NNN.png.
 
     Returns:
-        生成された画像ファイルパスのリスト
+        Paths of the written images, in page order.
 
     Raises:
-        FileNotFoundError: PDFファイルが見つからない場合
-        Exception: PDF処理でエラーが発生した場合
+        FileNotFoundError: The PDF does not exist.
+        Exception: PyMuPDF failed to open or render the PDF.
     """
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"PDFファイルが見つかりません: {pdf_path}")
 
-    # 出力ディレクトリを作成
     os.makedirs(output_dir, exist_ok=True)
 
     print(f"PDFを開いています: {pdf_path}")
@@ -70,17 +65,15 @@ def pdf_to_images(pdf_path: str, output_dir: str, dpi: int = 600) -> List[str]:
         for page_num in range(total_pages):
             page = doc[page_num]
 
-            # DPIに基づいてスケーリング行列を作成（72dpiが基準）
+            # PDF coordinates are in points, 72 per inch.
             mat = fitz.Matrix(dpi / 72, dpi / 72)
 
-            # ページを画像化
             pix = page.get_pixmap(matrix=mat)
 
-            # ファイル名を3桁のゼロパディングで生成
+            # Zero padding keeps the files in page order when img2pptx sorts them by name.
             output_filename = f"page_{page_num + 1:03d}.png"
             output_path = os.path.join(output_dir, output_filename)
 
-            # PNG形式で保存
             pix.save(output_path)
             image_paths.append(output_path)
 
@@ -97,28 +90,23 @@ def pdf_to_images(pdf_path: str, output_dir: str, dpi: int = 600) -> List[str]:
 
 def images_to_pptx(image_source: str, output_pptx: str) -> None:
     """
-    画像ファイルまたはディレクトリからPPTXファイルを生成
+    Build a PPTX with one slide per image from an image file or a directory.
 
-    Args:
-        image_source: 画像ファイルまたはディレクトリのパス
-        output_pptx: 出力PPTXファイルパス
+    Images in a directory are used in file name order.
 
     Raises:
-        FileNotFoundError: 画像ファイルまたはディレクトリが見つからない場合
-        ValueError: 有効な画像ファイルが見つからない場合
+        FileNotFoundError: The file or directory does not exist.
+        ValueError: No file with a supported image extension was found.
     """
     if not os.path.exists(image_source):
         raise FileNotFoundError(f"画像ソースが見つかりません: {image_source}")
 
-    # 画像ファイルリストを取得
     image_files = []
 
     if os.path.isfile(image_source):
-        # 単一ファイルの場合
         if image_source.lower().endswith(SUPPORTED_IMAGE_FORMATS):
             image_files = [image_source]
     elif os.path.isdir(image_source):
-        # ディレクトリの場合
         for filename in sorted(os.listdir(image_source)):
             if filename.lower().endswith(SUPPORTED_IMAGE_FORMATS):
                 image_files.append(os.path.join(image_source, filename))
@@ -128,51 +116,39 @@ def images_to_pptx(image_source: str, output_pptx: str) -> None:
 
     print(f"画像ファイル数: {len(image_files)}")
 
-    # プレゼンテーションを作成
     prs = Presentation()
 
-    # スライドサイズを16:9に設定
     prs.slide_width = Inches(10)
     prs.slide_height = Inches(5.625)
 
-    # 空白レイアウトを使用（インデックス6）
+    # Layout 6 of the default template is "Blank".
     blank_layout = prs.slide_layouts[6]
 
     for idx, image_path in enumerate(image_files, start=1):
         print(f"  スライド {idx}/{len(image_files)} を作成中: {os.path.basename(image_path)}")
 
-        # 画像のサイズを取得
         with Image.open(image_path) as img:
             img_width, img_height = img.size
 
-        # 画像のアスペクト比
         img_aspect = img_width / img_height
-
-        # スライドのアスペクト比
         slide_aspect = prs.slide_width / prs.slide_height
 
-        # スライドサイズいっぱいに画像を配置
-        # アスペクト比を維持しながら、はみ出す部分をクロップ
+        # Scale the image to cover the whole slide without distortion and center it.
+        # The parts outside the slide stay in the file but are not shown.
         if img_aspect > slide_aspect:
-            # 画像が横長の場合、高さを基準にする
             height = prs.slide_height
             width = int(height * img_aspect)
             left = int((prs.slide_width - width) / 2)
             top = 0
         else:
-            # 画像が縦長の場合、幅を基準にする
             width = prs.slide_width
             height = int(width / img_aspect)
             left = 0
             top = int((prs.slide_height - height) / 2)
 
-        # スライドを追加
         slide = prs.slides.add_slide(blank_layout)
-
-        # 画像を追加
         slide.shapes.add_picture(image_path, left, top, width, height)
 
-    # PPTXファイルを保存
     prs.save(output_pptx)
     print(f"PPTXファイルを保存しました: {output_pptx}")
 
@@ -180,16 +156,11 @@ def images_to_pptx(image_source: str, output_pptx: str) -> None:
 def pdf_to_pptx(pdf_path: str, output_pptx: str, dpi: int = 600,
                 keep_images: bool = False, image_dir: Optional[str] = None) -> None:
     """
-    PDFから直接PPTXファイルを生成
+    Convert a PDF to a PPTX through PNG images.
 
-    Args:
-        pdf_path: 入力PDFファイルパス
-        output_pptx: 出力PPTXファイルパス
-        dpi: 解像度（デフォルト: 600）
-        keep_images: 中間画像を保持するか（デフォルト: False）
-        image_dir: 中間画像の保存先（デフォルト: 一時ディレクトリ）
+    The images are written to image_dir if given, otherwise to a temporary
+    directory that is deleted at the end unless keep_images is set.
     """
-    # 一時ディレクトリまたは指定されたディレクトリを使用
     if image_dir:
         temp_dir = image_dir
         os.makedirs(temp_dir, exist_ok=True)
@@ -199,11 +170,9 @@ def pdf_to_pptx(pdf_path: str, output_pptx: str, dpi: int = 600,
         is_temp = True
 
     try:
-        # PDF → 画像
         print("ステップ1: PDFを画像に変換中...")
         pdf_to_images(pdf_path, temp_dir, dpi)
 
-        # 画像 → PPTX
         print("\nステップ2: 画像からPPTXを生成中...")
         images_to_pptx(temp_dir, output_pptx)
 
@@ -213,14 +182,12 @@ def pdf_to_pptx(pdf_path: str, output_pptx: str, dpi: int = 600,
             print(f"中間画像は保持されています: {temp_dir}")
 
     finally:
-        # 一時ディレクトリをクリーンアップ
         if is_temp and not keep_images:
             shutil.rmtree(temp_dir)
             print(f"一時ファイルを削除しました: {temp_dir}")
 
 
 def main():
-    """メインエントリーポイント"""
     parser = argparse.ArgumentParser(
         description='PDF to Image to PPTX Converter',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -239,18 +206,15 @@ def main():
 
     subparsers = parser.add_subparsers(dest='command', help='実行するコマンド')
 
-    # pdf2img サブコマンド
     parser_pdf2img = subparsers.add_parser('pdf2img', help='PDFを画像に変換')
     parser_pdf2img.add_argument('input', help='入力PDFファイルパス')
     parser_pdf2img.add_argument('--output', default='./images', help='出力ディレクトリ（デフォルト: ./images）')
     parser_pdf2img.add_argument('--dpi', type=int, default=600, help='解像度（デフォルト: 600）')
 
-    # img2pptx サブコマンド
     parser_img2pptx = subparsers.add_parser('img2pptx', help='画像からPPTXを生成')
     parser_img2pptx.add_argument('input', help='画像ファイルまたはディレクトリパス')
     parser_img2pptx.add_argument('--output', required=True, help='出力PPTXファイルパス')
 
-    # pdf2pptx サブコマンド
     parser_pdf2pptx = subparsers.add_parser('pdf2pptx', help='PDFから直接PPTXを生成')
     parser_pdf2pptx.add_argument('input', help='入力PDFファイルパス')
     parser_pdf2pptx.add_argument('--output', required=True, help='出力PPTXファイルパス')
